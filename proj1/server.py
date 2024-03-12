@@ -8,12 +8,12 @@ import pseudoSensor
 
 config = dotenv_values(".env")
 connflag = False
+run = True
 
-print(config)
 
 # http://www.steves-internet-guide.com/python-mqtt-client-changes/
-
-
+# MQTT version five is used, the above guide helps understand the code changes
+# Needed to get this to work with the latest libraries
 def on_connect(client, userdata, flags, reasonCode, properties=None):
     global connflag
     connflag = True
@@ -21,7 +21,31 @@ def on_connect(client, userdata, flags, reasonCode, properties=None):
 
 
 def on_message(client, userdata, msg):
-    print(msg.topic + " " + str(msg.payload))
+    payload = json.loads(msg.payload)
+    print("Message received on topic ", msg.topic)
+    for key, value in payload.items():
+        print(key, "->", value)
+
+    # Handle the commands
+    match msg.topic:
+        case "control/commands":
+            handle_command(payload)
+
+
+def handle_command(payload: dict):
+    global run
+    global connflag
+    match payload["command"]:
+        case "stop":
+            run = False
+        case "pause":
+            connflag = False
+        case "resume":
+            connflag = True
+
+
+def on_subscribe(client, obj, mid, reason_code_list, properties):
+    print("Suscribed:" + str(mid) + " " + str(reason_code_list))
 
 
 mqtt_client = paho.Client(
@@ -29,6 +53,7 @@ mqtt_client = paho.Client(
 
 mqtt_client.on_connect = on_connect
 mqtt_client.on_message = on_message
+mqtt_client.on_subscribe = on_subscribe
 
 mqtt_client.tls_set(
     ca_certs=config["CA_CERT"],
@@ -47,16 +72,25 @@ mqtt_client.connect(
 
 ps = pseudoSensor.PseudoSensor()
 
+# Subscribe to the contorl/commands topic which sends the stop command
+# To end the MQTT loop
+mqtt_client.subscribe("control/commands")
+
 mqtt_client.loop_start()
 
-while True:
-    time.sleep(1)
+while run:
+    time.sleep(10)
     if connflag:
         hum, temp = ps.generate_value()
         now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         data = {"humidity": hum, "temperature": temp, "datetime": now}
         mqtt_client.publish("sensor/data", json.dumps(data), qos=1)
         print("msg sent: ", data)
-
     else:
-        print("waiting for connection...")
+        print("Publishing data paused...")
+
+# Thing has sent the command to stop, the above while loop is stopped
+# So the MQTT client loop is stopped.
+print("Message received to stop loop...")
+print("Ending loop, please restart script to send data")
+mqtt_client.loop_stop()
