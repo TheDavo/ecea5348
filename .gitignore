@@ -161,4 +161,5 @@ cython_debug/
 
 
 # Ignore outputs from Pandoc for report generation
-.pdf
+*.pdf
+*.html
