@@ -14,15 +14,15 @@ run = True
 # http://www.steves-internet-guide.com/python-mqtt-client-changes/
 # MQTT version five is used, the above guide helps understand the code changes
 # Needed to get this to work with the latest libraries
-def on_connect(client, userdata, flags, reasonCode, properties=None):
+def on_connect(client, userdata, flags, reason_code, properties=None):
     global connflag
     connflag = True
-    print("Connection returned result: " + str(reasonCode))
+    print("Connection returned result ->", str(reason_code))
 
 
 def on_message(client, userdata, msg):
     payload = json.loads(msg.payload)
-    print("Message received on topic ", msg.topic)
+    print("Message received on topic ->", msg.topic)
     for key, value in payload.items():
         print(key, "->", value)
 
@@ -33,6 +33,13 @@ def on_message(client, userdata, msg):
 
 
 def handle_command(payload: dict):
+    """
+    handle_command takes in the message payload and specifically looks
+    for a "command" key to parse and handle from the "control/commands" topic
+
+    Args:
+        payload (dict): command payload from topic "control/commands"
+    """
     global run
     global connflag
     match payload["command"]:
@@ -42,6 +49,8 @@ def handle_command(payload: dict):
             connflag = False
         case "resume":
             connflag = True
+        case _:
+            print("Error: unknown command", payload["command"])
 
 
 def on_subscribe(client, obj, mid, reason_code_list, properties):
@@ -79,18 +88,24 @@ mqtt_client.subscribe("control/commands")
 mqtt_client.loop_start()
 
 while run:
-    time.sleep(10)
+    time.sleep(3)
     if connflag:
         hum, temp = ps.generate_value()
         now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         data = {"humidity": hum, "temperature": temp, "datetime": now}
+
         mqtt_client.publish("sensor/data", json.dumps(data), qos=1)
-        print("msg sent: ", data)
+        print("msg sent -> ")
+        print("\thumidity:", hum)
+        print("\ttemperature:", temp)
+        print("\tdatetime:", now)
     else:
         print("Publishing data paused...")
 
 # Thing has sent the command to stop, the above while loop is stopped
 # So the MQTT client loop is stopped.
-print("Message received to stop loop...")
+print("|-------")
+print("Message received to stop loop...\n\n")
 print("Ending loop, please restart script to send data")
+print("|-------")
 mqtt_client.loop_stop()
