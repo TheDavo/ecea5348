@@ -1,0 +1,45 @@
+body {
+  font-family: "Segoe UI", sans-serif;
+  font-size: 12pt;
+  counter-reset: figurenum chapternum;
+}
+
+
+@page {
+  size: letter;
+}
+
+@page {
+  @bottom-left {
+    content: "ECEA5348 Project 1";
+  }
+
+  @bottom-right {
+    content: counter(page);
+  }
+}
+
+#introduction {
+  counter-reset: chapternum;
+}
+
+h1 {
+  page-break-before: always;
+  border-bottom: 3pt solid black;
+  counter-reset: figurenum;
+  counter-increment: chapternum;
+}
+
+.sourceCode {
+  font-size: 90%;
+  font-family: monospace;
+}
+
+figcaption:before {
+  counter-increment: figurenum;
+  content: counter(chapternum) "-" counter(figurenum) ". ";
+}
+
+img {
+  max-width: 75%;
+}

@@ -1,0 +1,105 @@
+from dotenv import dotenv_values
+import logging
+import pymysql
+import json
+import boto3
+from botocore.exceptions import ClientError
+import sys
+
+# Code used from tutorial to insert data into an AWS RDS db
+# https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/rds-lambda-tutorial.html
+
+# Use this code snippet in your app.
+# If you need more information about configurations
+# or implementing the sample code, visit the AWS docs:
+# https://aws.amazon.com/developer/language/python/
+
+
+def get_secret():
+
+    secret_name = "ecea5348/secrets"
+    region_name = "us-east-1"
+
+    # Create a Secrets Manager client
+    session = boto3.session.Session()
+    client = session.client(
+        service_name='secretsmanager',
+        region_name=region_name
+    )
+
+    try:
+        get_secret_value_response = client.get_secret_value(
+            SecretId=secret_name
+        )
+    except ClientError as e:
+        # For a list of exceptions thrown, see
+        # https://docs.aws.amazon.com/secretsmanager/latest/apireference/API_GetSecretValue.html
+        raise e
+
+    secret = get_secret_value_response['SecretString']
+    return secret
+
+
+config = dotenv_values(".env")
+
+secret = json.loads(get_secret())
+db_username = secret.get('username')
+db_password = secret.get('password')
+db_name = secret.get('dbname')
+host = config["RDSHOST"]
+table = "SensorData"
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
+
+# Create the database connection outside of handler events to allow
+# connections to be re-used by subsequent function invocations.
+
+try:
+    conn = pymysql.connect(
+        host=host,
+        user=db_username,
+        passwd=db_password,
+        db=db_name,
+        connect_timeout=5
+    )
+except pymysql.MySQLError as e:
+    logger.error(
+        "ERROR: Unexpected error: Could not connect to MySQL instance.")
+    logger.error(e)
+    sys.exit(1)
+
+
+logger.info("SUCCESS: Connetion to RDS for MySQL instance succeeded.")
+
+
+def lambda_handler(event, context):
+    """
+    Creates a database if one does not exist and adds pseudo sensor data to it.
+    """
+
+    message = event['Reconds'][0]['body']
+    data = json.loads(message)
+    datetime = data['datetime']
+    temperature = float(data['temperature'])
+    humidity = float(data['humidity'])
+
+    insert_data_str = f"""
+    INSERT INTO {table} (datetime, temperature, humidity)
+    values (%s, %f, %f)
+    """
+
+    create_table_str = f"""
+        CREATE TABLE if not exists {table} (
+        id int AUTO_INCREMENT PRIMARY KEY,
+        datetime varchar(255) NOT NULL,
+        temperature_degC float,
+        humidity_pcent float,
+    )
+    """
+
+    with conn.cursor() as cur:
+        cur.execute(create_table_str)
+        cur.execute(insert_data_str, (datetime, temperature, humidity))
+    conn.commit()
+
+    return "Added item to RDS for MySQL table"
