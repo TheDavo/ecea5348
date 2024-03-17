@@ -56,9 +56,9 @@ Once assumption here was that once the message was read, it was to be deleted
 from the SQS queue, in other words, the data is consumed and assumed to be
 properly used by the end user or application.
 
-To ensure that the code is safe and nothing the `dotenv` library is installed
-and used to hide locations of the private keys, access keys, and endpoints
-of the AWS setup.
+To ensure that the code is safe and nothing is exposed, the `dotenv` library 
+is installed and used to hide locations of the private keys, access keys,
+and endpoints of the AWS setup.
 
 # Code
 
