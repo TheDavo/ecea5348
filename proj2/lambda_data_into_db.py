@@ -1,8 +1,8 @@
-from dotenv import dotenv_values
 import logging
 import pymysql
 import json
 import boto3
+import os
 from botocore.exceptions import ClientError
 import sys
 
@@ -26,11 +26,14 @@ def get_secret():
         service_name='secretsmanager',
         region_name=region_name
     )
+    print("session made")
 
     try:
+        print("getting secret values")
         get_secret_value_response = client.get_secret_value(
             SecretId=secret_name
         )
+        print("secret values got")
     except ClientError as e:
         # For a list of exceptions thrown, see
         # https://docs.aws.amazon.com/secretsmanager/latest/apireference/API_GetSecretValue.html
@@ -40,16 +43,18 @@ def get_secret():
     return secret
 
 
-config = dotenv_values(".env")
-
 secret = json.loads(get_secret())
+
 db_username = secret.get('username')
 db_password = secret.get('password')
 db_name = secret.get('dbname')
-host = config["RDSHOST"]
+host = os.environ.get("RDSHOST")
 table = "SensorData"
+
+
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
+
 
 # Create the database connection outside of handler events to allow
 # connections to be re-used by subsequent function invocations.
@@ -62,6 +67,7 @@ try:
         db=db_name,
         connect_timeout=5
     )
+
 except pymysql.MySQLError as e:
     logger.error(
         "ERROR: Unexpected error: Could not connect to MySQL instance.")
@@ -69,7 +75,7 @@ except pymysql.MySQLError as e:
     sys.exit(1)
 
 
-logger.info("SUCCESS: Connetion to RDS for MySQL instance succeeded.")
+logger.info("SUCCESS: Connection to RDS for MySQL instance succeeded.")
 
 
 def lambda_handler(event, context):
@@ -77,29 +83,29 @@ def lambda_handler(event, context):
     Creates a database if one does not exist and adds pseudo sensor data to it.
     """
 
-    message = event['Reconds'][0]['body']
-    data = json.loads(message)
-    datetime = data['datetime']
-    temperature = float(data['temperature'])
-    humidity = float(data['humidity'])
+    datetime = event['datetime']
+    temperature = float(event['temperature'])
+    humidity = float(event['humidity'])
 
     insert_data_str = f"""
-    INSERT INTO {table} (datetime, temperature, humidity)
-    values (%s, %f, %f)
+    INSERT INTO {table} (datetime, temperature_degC, humidity_pcent)
+    values (%s, %s, %s)
     """
 
     create_table_str = f"""
-        CREATE TABLE if not exists {table} (
-        id int AUTO_INCREMENT PRIMARY KEY,
-        datetime varchar(255) NOT NULL,
+        CREATE TABLE IF NOT EXISTS {table} (
+        id int AUTO_INCREMENT,
+        datetime varchar(255),
         temperature_degC float,
         humidity_pcent float,
+        primary key (id)
     )
     """
 
     with conn.cursor() as cur:
         cur.execute(create_table_str)
         cur.execute(insert_data_str, (datetime, temperature, humidity))
+
     conn.commit()
 
     return "Added item to RDS for MySQL table"
